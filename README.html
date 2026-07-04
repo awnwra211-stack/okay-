@@ -1,1 +1,158 @@
 
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>مواقيت الصلاة - أمدرمان</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
+
+    * { box-sizing: border-box; font-family: 'Cairo', sans-serif; }
+    body {
+      background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+      color: #fff; margin: 0; padding: 20px; min-height: 100vh;
+    }
+  .container {
+      max-width: 550px; margin: 20px auto; background: rgba(255,255,255,0.08);
+      padding: 25px; border-radius: 20px; backdrop-filter: blur(15px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    h1 {
+      margin: 0; font-size: 28px;
+      background: linear-gradient(90deg, #FFD700, #FFA500);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    #current-time {
+      font-size: 32px; font-weight: 700; margin: 15px 0;
+      letter-spacing: 2px;
+    }
+    #date, #location { opacity: 0.8; margin: 5px 0; }
+
+  .prayer-grid { display: grid; gap: 12px; margin-top: 20px; }
+  .prayer {
+      background: rgba(255,255,255,0.1); padding: 15px;
+      border-radius: 15px; display: grid; grid-template-columns: 1fr auto 1fr;
+      align-items: center; transition: 0.3s; border: 1px solid rgba(255,255,255,0.1);
+    }
+  .prayer:hover { transform: translateY(-3px); background: rgba(255,255,255,0.15); }
+  .prayer.active {
+      background: linear-gradient(90deg, #00c851, #007e33);
+      box-shadow: 0 0 20px rgba(0,200,81,0.4);
+      border: 1px solid #00c851;
+    }
+  .prayer.name { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .prayer.time { font-size: 20px; font-weight: 700; color: #FFD700; }
+  .prayer.iqama { font-size: 14px; }
+  .iqama-input {
+      width: 55px; padding: 6px; border: none; border-radius: 8px;
+      text-align: center; background: rgba(0,0,0,0.3); color: #fff;
+    }
+
+    button {
+      background: linear-gradient(90deg, #FFA500, #FF8C00); color: #fff; border: none;
+      padding: 12px 25px; border-radius: 12px; cursor: pointer; margin-top: 20px;
+      font-size: 16px; font-weight: 700; width: 100%; transition: 0.3s;
+    }
+    button:hover { transform: scale(1.03); box-shadow: 0 5px 15px rgba(255,165,0,0.4); }
+
+   .footer { margin-top: 15px; font-size: 12px; opacity: 0.6; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🕌 مواقيت الصلاة</h1>
+    <p id="location">📍 أمدرمان، السودان</p>
+    <p id="date"></p>
+    <div id="current-time"></div>
+
+    <div class="prayer-grid" id="prayers"></div>
+
+    <button onclick="saveIqama()">💾 حفظ أوقات الإقامة</button>
+    <p class="footer">البيانات من Aladhan API - طريقة أم القرى</p>
+  </div>
+
+<script>
+  let iqamaTimes = JSON.parse(localStorage.getItem('iqamaTimes')) || {
+    Fajr: "20", Dhuhr: "10", Asr: "10", Maghrib: "5", Isha: "10"
+  };
+
+  const prayerData = {
+    Fajr: { ar: "الفجر", icon: "🌙" },
+    Dhuhr: { ar: "الظهر", icon: "☀️" },
+    Asr: { ar: "العصر", icon: "🌤️" },
+    Maghrib: { ar: "المغرب", icon: "🌅" },
+    Isha: { ar: "العشاء", icon: "🌃" }
+  };
+
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('current-time').innerText = now.toLocaleTimeString('ar-SD');
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  const today = new Date();
+  document.getElementById('date').innerText = today.toLocaleDateString('ar-SD', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'});
+
+  async function getPrayerTimes() {
+    const city = "Omdurman";
+    const country = "SD";
+    const method = 5;
+    const url = `https://api.aladhan.com/v1/timesByCity?city=${city}&country=${country}&method=${method}`;
+
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      const timings = data.data.timings;
+      const prayersDiv = document.getElementById('prayers');
+      prayersDiv.innerHTML = "";
+
+      Object.keys(prayerData).forEach(p => {
+        const time = timings[p].slice(0,5);
+        prayersDiv.innerHTML += `
+          <div class="prayer" id="p-${p}">
+            <div class="name">${prayerData[p].icon} ${prayerData[p].ar}</div>
+            <div class="time">${time}</div>
+            <div class="iqama">
+              إقامة: <input type="number" class="iqama-input" id="iq-${p}" value="${iqamaTimes[p]}"> د
+            </div>
+          </div>
+        `;
+      });
+      highlightNextPrayer(timings);
+    } catch(e) {
+      document.getElementById('prayers').innerHTML = "<p>تعذر جلب البيانات، اتأكد من النت</p>";
+    }
+  }
+
+  function highlightNextPrayer(timings) {
+    const now = new Date();
+    const keys = Object.keys(prayerData);
+    const times = keys.map(p => {
+      const [h, m] = timings[p].split(':');
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
+    });
+
+    for(let i=0; i<times.length; i++) {
+      if(times[i] > now) {
+        document.getElementById(`p-${keys[i]}`).classList.add('active');
+        break;
+      }
+    }
+    // لو كلهم فاتو معناها الفجر الجاي
+    if(!document.querySelector('.active')) document.getElementById('p-Fajr').classList.add('active');
+  }
+
+  function saveIqama() {
+    Object.keys(prayerData).forEach(p => {
+      iqamaTimes[p] = document.getElementById(`iq-${p}`).value;
+    });
+    localStorage.setItem('iqamaTimes', JSON.stringify(iqamaTimes));
+    alert("✅ تم حفظ أوقات الإقامة");
+  }
+
+  getPrayerTimes();
+</script>
+</body>
+</html>
